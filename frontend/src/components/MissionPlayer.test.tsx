@@ -1,4 +1,4 @@
-// Camera behaviour of the mission screen (tests T1–T5 in docs/AUDIT_AND_PLAN.md).
+// Camera behaviour of the mission screen (tests T1–T5 in docs/ARCHITECTURE.md).
 // The camera and the face model are faked here; everything else is the real app
 // code, talking to a fake server that records what it is sent.
 import { beforeEach, describe, expect, it, vi } from 'vitest';

@@ -1,0 +1,25 @@
+Output of: python tools/evaluate_mastery.py   (run from backend/, default 5,000 students x 20 answers, seed 7)
+Reproduces Table 6.1 and Section 6.2 of report/MathVerse_ML_Project_Report.pdf.
+
+
+=== Students match the model's assumptions ===  (5000 students x 20 answers = 100000 predictions)
+model                         AUC     Acc   Brier  LogLoss
+BKT (this project)          0.770   78.3%   0.151    0.469
+Running accuracy so far     0.744   74.1%   0.182    0.547
+Last answer only            0.696   74.7%   0.173    0.524
+Constant (overall rate)     0.500   75.3%   0.186    0.559
+Mastery estimate vs the student's true state: AUC 0.941
+Easy/hard choices that match the true state: 89.6%
+Answers to recognise a student who has learned: median 3, 90th percentile 5
+
+=== Students differ from the model (robustness) ===  (5000 students x 20 answers = 100000 predictions)
+model                         AUC     Acc   Brier  LogLoss
+BKT (this project)          0.729   70.9%   0.196    0.578
+Running accuracy so far     0.704   66.9%   0.214    0.619
+Last answer only            0.646   66.3%   0.219    0.630
+Constant (overall rate)     0.500   65.8%   0.225    0.642
+Mastery estimate vs the student's true state: AUC 0.916
+Easy/hard choices that match the true state: 87.3%
+Answers to recognise a student who has learned: median 3, 90th percentile 5
+
+Simulated students, not real data. The model's parameters are textbook defaults, not fitted.

@@ -1,320 +1,251 @@
-# MathVerse
+# MathVerse: Adaptive, Gamified Mathematics Practice using Bayesian Knowledge Tracing
 
-Maths practice as superhero boss battles. Students play Spider-Man against six
-villains, one per maths topic. Questions adapt to how well the student knows
-each topic, and parents and teachers get honest progress reports built only from
-what the student actually answered.
+**Machine Learning Project**, BE Third Year, Computer Science and Engineering,
+Thapar Institute of Engineering and Technology, Patiala (November 2026).
+Supervisor: Dr Mahak Gambhir.
 
-Built for UCS503P Software Engineering (2026-27 ODD), Thapar Institute of
-Engineering and Technology, Patiala.
+📄 **Report:** [report/MathVerse_ML_Project_Report.pdf](report/MathVerse_ML_Project_Report.pdf)
+🧠 **Every ML model in detail:** [ML_COMPONENTS.md](ML_COMPONENTS.md)
+📊 **Reproduced results:** [results/bkt_simulation_results.txt](results/bkt_simulation_results.txt)
 
 ![A full mission against Venom: camera choice, story questions, a web strike, a combo, a counter-attack and the win](docs/screenshots/gameplay.gif)
 
-*A whole mission against Venom, recorded from the running app and shown at 1.5× speed: the camera choice, story questions, Spider-Man's web strikes, a combo, the villain's counter-attack, and the win.*
-
 ## Contents
 
-- [The problem and who it is for](#the-problem-and-who-it-is-for)
-- [Screenshots](#screenshots)
-- [Features](#features)
-- [By the numbers](#by-the-numbers)
-- [Tech stack](#tech-stack)
-- [System architecture](#system-architecture)
-- [What the "AI" parts really are](#what-the-ai-parts-really-are)
-- [Run it locally](#run-it-locally)
-- [Tests](#tests)
-- [Project layout](#project-layout)
-- [Team](#team)
-- [Documents](#documents)
-- [Known limits](#known-limits)
+1. [Abstract](#abstract)
+2. [Problem statement](#problem-statement)
+3. [Objectives](#objectives)
+4. [Dataset](#dataset)
+5. [Methodology](#methodology)
+6. [Results](#results)
+7. [Implementation](#implementation)
+8. [Repository structure](#repository-structure)
+9. [Run it](#run-it)
+10. [Limitations and future work](#limitations-and-future-work)
+11. [Team](#team)
 
-## The problem and who it is for
+## Abstract
 
-Maths practice is repetitive, and it is hard to tell from a worksheet score which
-topic a child actually struggles with. MathVerse turns practice into short
-missions and keeps a per-topic estimate of what the student knows.
+Students often lose confidence in mathematics because practice is repetitive,
+and the same questions are too hard for some and too easy for others.
+MathVerse is a gamified web app where students practise six school maths topics
+through superhero boss battles. Behind the game, a machine-learning student
+model adapts the difficulty of every question.
 
-| User | What they do | What they get |
+The core model is **Bayesian Knowledge Tracing (BKT)**. It is a probabilistic
+hidden-state model that estimates, from right and wrong answers alone, the
+probability that a student has mastered each topic, and uses it to pick an
+easy, medium or hard question. We changed the textbook update so that a
+correct answer always raises the estimate and a wrong answer always lowers it.
+
+No real interaction dataset existed, so the model was evaluated on **5,000
+simulated students × 20 answers** in two scenarios. One scenario deliberately
+violates the model's assumptions. BKT beat every baseline in both (**AUC 0.770
+vs 0.744; Brier 0.151 vs 0.182**) and recognised a learned topic after a median
+of **3 answers**.
+
+**Keywords:** knowledge tracing, Bayesian Knowledge Tracing, adaptive learning,
+student modelling, gamification, educational data mining
+
+## Problem statement
+
+Given the sequence of a student's right and wrong answers in one topic, the
+system must:
+
+1. estimate the probability that the student has mastered that topic,
+2. predict whether the next answer will be correct, and
+3. use the estimate to select the next question's difficulty tier.
+
+It also has to meet four constraints:
+
+| Constraint | How it is met |
+|---|---|
+| **Explainable, monotonic updates** | Modified BKT: a correct answer always raises mastery and a wrong one always lowers it, tested over 0.01–0.99 |
+| **No large training dataset** | BKT works from the first answer. A data-hungry LSTM from the prototype was removed |
+| **Separation of signals** | The model's only input is `is_correct`. The camera estimate never reaches mastery, difficulty or points |
+| **No invented content** | Questions and answers come from code generators. An LLM may only reword a verified hint |
+
+## Objectives
+
+1. Adaptive difficulty from a learned student model: one BKT estimate per
+   student per topic, choosing one of three tiers for each of six topics.
+2. Predict next answers better than running-accuracy, last-answer and constant
+   baselines, in AUC and Brier score, on 100,000 simulated predictions per
+   scenario.
+3. Verified behaviour: mastery rises after every correct answer and falls after
+   every wrong one, for every starting value from 0.01 to 0.99.
+4. A privacy-preserving vision model: face landmarks run in the browser, at most
+   four numbers are sent per question, and no image is ever uploaded or stored.
+5. A constrained language model that only rewords a verified hint, with a
+   6-second timeout and a fallback.
+
+## Dataset
+
+No public dataset was used. As is standard in knowledge tracing when real data
+is missing, the model is evaluated on **simulated students** whose true hidden
+state is known. They are generated by `backend/tools/evaluate_mastery.py`.
+
+| Parameter | Scenario 1: students match model | Scenario 2: students differ |
 |---|---|---|
-| **Student** | Plays missions: each villain is beaten with seven correct answers | Questions pitched at their level, points, levels, badges, and character effects that react to every answer |
-| **Parent** | Links to their child with a code the child shares | A report: accuracy, practice over time, mastery per topic, topics to practise next, earned badges |
-| **Teacher** | Links to several students the same way | The same report for each student in the class |
+| Students × answers | 5,000 × 20 | 5,000 × 20 |
+| Prior / Guess / Slip / Learn | 0.30 / 0.25 / 0.10 / 0.15 | 0.20 / 0.30 / 0.15 / 0.10 |
+| Labelled predictions | 100,000 | 100,000 |
+| Share of answers correct | 76.0% | 65.5% |
 
-**Use cases**
+- **Target:** `is_correct` (binary). The classes are imbalanced (about 76%
+  correct), so **AUC and Brier score** are the main metrics, not accuracy.
+- **Hidden label:** `true_learned`, used only to evaluate the estimate.
+- **Real data:** every answer in the app is logged in the `attempts` table. Only
+  9 real answers existed at the time of writing, below the 200-answer /
+  10-student threshold, so no real-data result is claimed.
 
-1. A student signs up, starts the first mission and chooses whether to switch on
-   the camera. The game is the same either way.
-2. The server picks each question's difficulty from the student's mastery of
-   that topic, generates it, and keeps the answer to itself.
-3. The student answers. The server judges the answer, updates mastery, awards
-   points, and sends the next question. Wins unlock the next villain.
-4. The student asks Gwen for a hint when stuck.
-5. A parent or teacher enters the student's link code and opens the report.
-6. For a demo, one-click demo accounts show a filled-in student, parent and
-   teacher without registering (off by default).
+Features, preprocessing and EDA are in [ML_COMPONENTS.md § 5](ML_COMPONENTS.md#5-dataset-and-preprocessing)
+and report Chapter 3.
 
-## Screenshots
+## Methodology
 
-| | |
-|---|---|
-| ![Landing page](docs/screenshots/landing.jpg) | ![Camera consent: optional, before every first mission](docs/screenshots/camera-consent.jpg) |
-| **Landing page** | **Camera consent.** Asked once, either answer gives the same game. |
-| ![A story question against Green Goblin](docs/screenshots/mission-question.jpg) | ![A three-answer combo](docs/screenshots/mission-combo.jpg) |
-| **A mission.** A story question, the health bars, sound and motion controls, the hint button. | **A combo.** Spider-Man's web reaches the villain's portrait after three correct answers in a row. |
-| ![Victory screen](docs/screenshots/mission-victory.jpg) | ![Student dashboard](docs/screenshots/student-dashboard.jpg) |
-| **Victory.** Points earned and best streak. | **Student dashboard** (demo account) |
-| ![Parent report: learning progress and trends](docs/screenshots/parent-report.jpg) | ![Parent report: mastery by topic, observations and badges](docs/screenshots/parent-report-2.jpg) |
-| **Parent report:** headline figures and practice over time | **Parent report:** mastery by topic, rule-based observations, badges |
+```mermaid
+flowchart LR
+  A["Answer"] --> V["Validate<br/>(Pydantic)"] --> J["Server judges<br/>is_correct"]
+  J --> B["BKT update"] --> T["Tier policy"] --> Q["Next question<br/>easy / medium / hard"]
+  B --> R["mastery_before / after<br/>→ reports"]
+  S["Simulated students"] --> E["Offline evaluation<br/>predict → update"] --> M["AUC, Brier,<br/>accuracy"]
+  B -. same function .- E
+```
 
-The demo screenshots show seeded sample data, labelled as such on every screen.
-The recording at the top and the mission screenshots were made with a local test account.
+**Models used**
 
-## Features
+| Model | Type | Role |
+|---|---|---|
+| **Bayesian Knowledge Tracing** | Hidden Markov model (two states) | Mastery per student per topic; predicts next answer; drives tier |
+| Tier policy | Threshold rule | Easy if p < 0.40, hard if p > 0.75, else medium |
+| Running accuracy, last answer, constant | Baselines | Comparison |
+| MediaPipe FaceLandmarker | Pre-trained deep network, in the browser | Optional attention estimate, stored and reported only |
+| Groq LLM (`openai/gpt-oss-120b`) | Large language model | Rewords a verified hint only |
 
-**Gameplay**
-- Six villains, one topic each: Green Goblin (linear equations), Doctor Octopus
-  (area and perimeter), Mysterio (sequences), Venom (percentages), The Lizard
-  (exponents and roots), Kingpin (ratios). Winning against one unlocks the next.
-- Three difficulty tiers per topic, chosen from the student's mastery.
-- About half the questions are **story questions** told through the villain's
-  world: Goblin's pumpkin bombs, Doc Ock's metal arms, Mysterio's illusions,
-  Venom's symbiote, the Lizard's serum, Kingpin's empire.
-- Points for every attempt, bonuses for streaks and speed, a victory bonus,
-  levels and badges.
-- **Character effects:** each character has its own synthesised sounds and
-  visual effects (web shots, pumpkin bombs, tentacles, illusions, tail sweeps,
-  shock rings), combo specials at streaks of 3, 5 and 7, a signature move from
-  the villain, and a defeat sequence. Mute, volume and reduced motion are
-  remembered on the device.
+**BKT equations** (prior p₀ = 0.30, guess g = 0.25, slip s = 0.10, learn ℓ = 0.15)
 
-**Learning**
-- Bayesian Knowledge Tracing keeps one mastery estimate per student per topic,
-  driven only by right and wrong answers.
-- Reports show the mastery band first and the percentage capped to 5–95%, beside
-  the plain count of correct answers, so a parent never sees a misleading 1% or 99%.
-- Hints for every question, written from the question's own numbers.
+```
+P(correct)          = p(1 − s) + (1 − p)g
+after a correct:  p′ = p(1 − s) / [p(1 − s) + (1 − p)g],   p_new = p′ + (1 − p′)ℓ
+after a wrong:  p_new = p·s / [p·s + (1 − p)(1 − g)]
+```
 
-**Trust and privacy**
-- The server owns the truth: it generates questions, keeps the answer, and
-  awards points. The client cannot score itself.
-- The camera is optional. Faces are analysed inside the browser and only four
-  numbers per question are sent. No image or video is stored or uploaded, and
-  the attention estimate never affects marks, difficulty or points.
-- Parents and teachers see a student only after entering that student's link code.
-- Every dashboard number comes from stored answers. Nothing is invented.
+Results are clamped to [0.01, 0.99]. **Our modification:** the learning step is
+applied only after correct answers. Textbook BKT would let a wrong answer raise
+mastery (0.05 → 0.16).
 
-## By the numbers
+**Testing strategy:** for each answer, every model predicts *before* seeing it
+and is updated *after* (no leakage). That gives 100,000 predictions per
+scenario, compared on AUC, accuracy, Brier and log loss, plus the estimate
+against the true hidden state.
 
-All figures are counted from the code and test runs (test counts as of 24 November 2026).
+## Results
 
-| | |
-|---|---|
-| Villains / maths topics | 6 |
-| Difficulty tiers per topic | 3 |
-| Plain question generators | 18 (6 villains × 3 tiers) |
-| Story question templates | 36 (6 per villain, 2 per tier) |
-| Fixed backup questions | 36, used only if the generator ever fails |
-| Different questions possible | effectively unlimited: numbers are random, answers computed |
-| API endpoints | 12 |
-| Database tables | 5 |
-| Synthesised sounds | 79, all generated in code |
-| Visual effect types | 57 |
-| Effect variations | 95, dealt so the same one does not repeat back to back |
-| Backend tests | 469 (pytest) |
-| Frontend tests | 231 (Vitest) |
-| Real-browser camera checks | 32 (`npm run check:camera`) |
-| Backend code | about 2,600 lines of Python, plus 1,600 lines of tests |
-| Frontend code | about 7,200 lines of TypeScript and CSS, plus 2,000 lines of tests |
-| Frontend runtime dependencies | 4 (React, React DOM, MediaPipe, an icon set) |
+**Next-answer prediction, 100,000 predictions per scenario** (report Table 6.1)
 
-**Game rules**
-
-| Rule | Value |
-|---|---|
-| Correct answers to win a mission | 7 |
-| Wrong answers or time-outs to lose | 7 |
-| Time per question | 5 minutes |
-| Points for a correct answer | 50, plus 15 for each answer already in the current streak, plus 20 if answered within 15 seconds |
-| Points for a wrong attempt | 5 (a time-out earns 0) |
-| Victory bonus | 300 + 50 × the final streak |
-| Levels | 1 to 6: one more for each different villain defeated |
-
-**Mastery model**
-
-| Parameter | Value |
-|---|---|
-| Starting estimate | 0.30 |
-| Guess (right without knowing) | 0.25, as there are four options |
-| Slip (wrong despite knowing) | 0.10 |
-| Learning step after a correct answer | 0.15 |
-| Easy below / hard above | 0.40 / 0.75 |
-| Stored range / shown range | 0.01–0.99 / 5–95% |
-
-**How well the mastery model works**
-
-Evaluated on 5,000 simulated students × 20 answers (100,000 predictions): each
-model predicts every answer before seeing it. There is no real-student dataset
-yet, so this is a simulation; the second test gives the students parameters
-deliberately different from the model's. Reproduce it with
-`python tools/evaluate_mastery.py` from `backend/`.
-
-| Model | AUC | Accuracy | Brier (lower is better) | AUC, students differ from model |
+| Model | AUC (Sc. 1) | Accuracy (Sc. 1) | Brier (Sc. 1) ↓ | AUC (Sc. 2) |
 |---|---|---|---|---|
-| **Bayesian Knowledge Tracing (this project)** | **0.770** | **78.3%** | **0.151** | **0.729** |
+| **BKT (this project)** | **0.770** | **78.3%** | **0.151** | **0.729** |
 | Running accuracy so far | 0.744 | 74.1% | 0.182 | 0.704 |
 | Last answer only | 0.696 | 74.7% | 0.173 | 0.646 |
 | Constant (overall rate) | 0.500 | 75.3% | 0.186 | 0.500 |
 
-The mastery estimate tracks the student's true (simulated) state with AUC 0.94,
-its easy/hard choices match that state 89.6% of the time, and a student who has
-learned a topic is recognised after a median of 3 answers. The parameters are
-textbook defaults, not yet fitted to real data.
-
-**On real answers:** `python tools/evaluate_real_data.py` (from `backend/`) runs
-the same comparison on answers stored in the database, using the mastery the
-model held just before each answer. It counts real students only, leaving out
-demo and test accounts, and reports a 95% interval for whether the model beats
-the running-accuracy baseline. Below 200 answers from 10 students it marks the
-figures as not enough data. As of 20 November 2026 there are 9 real answers from
-1 student, so no real-data result is claimed yet.
-
-**Camera estimate**
-
-| Setting | Value |
+| Other results | Achieved |
 |---|---|
-| Readings per second | about 10 |
-| Calibration (the student's resting head position) | first 5 seconds |
-| Counts as facing the screen | within 30° left or right and 20° up or down of that position |
-| Sent to the server per question | 4 numbers: face present %, facing the screen %, blink rate, seconds measured |
+| Mastery estimate vs true state, AUC (Sc. 1 / Sc. 2) | 0.941 / 0.916 |
+| Easy/hard choice matches the true state | 89.6% (Sc. 2: 87.3%) |
+| Answers to recognise a learned topic | median 3, 90th percentile 5 |
+| Monotonic update over 0.01–0.99 | all tests pass |
+| Automated tests | 469 backend + 231 frontend, all passing |
+| Images or video uploaded by the camera feature | 0 |
 
-## Tech stack
+BKT beats every baseline on every metric in **both** scenarios. The constant
+predictor reaches 75.3% accuracy with no information at all, which shows why
+AUC and Brier score matter more than accuracy here.
+
+Reproduce in about one second:
+
+```bash
+cd backend
+python tools/evaluate_mastery.py
+```
+
+## Implementation
 
 | Layer | Technology | Used for |
 |---|---|---|
-| Frontend | React 18, TypeScript, Vite | The single-page app |
-| Styling | Tailwind CSS, plain CSS animations, inline SVG | Layout, comic styling, character effects |
-| Sound | Web Audio API | Every character sound, synthesised in the browser |
-| Computer vision | MediaPipe Tasks Vision (FaceLandmarker) | The optional camera estimate, run entirely in the browser via WebAssembly |
-| Backend | Python, FastAPI, Pydantic | The API, request validation (unknown fields rejected) |
-| Database | SQLAlchemy, SQLite | Accounts, missions, answers, mastery |
-| Security | bcrypt, JWT (python-jose), Google Identity Services + google-auth | Password hashing, sign-in tokens, role checks, optional "Sign in with Google" |
-| Optional AI | Groq API (`openai/gpt-oss-120b`) | Rewording a hint in character; nothing else |
-| Testing | pytest, Vitest, React Testing Library, Playwright | Backend, frontend and real-browser camera checks |
-| CI | GitHub Actions | Tests, typecheck, lint and build on every push |
+| Model and backend | Python 3.12, FastAPI, Pydantic | BKT update, tier policy, API with strict validation |
+| Database | SQLite via SQLAlchemy | Attempts, mastery estimates, sessions, accounts |
+| Evaluation | `backend/tools/evaluate_mastery.py` | Simulated students, baselines and metrics |
+| Computer vision | MediaPipe Tasks Vision FaceLandmarker (WebAssembly) | In-browser face landmarks |
+| Language model | Groq API (`openai/gpt-oss-120b`) | Rewording a verified hint only |
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS | Game screens, dashboards, camera consent |
+| Testing and CI | pytest, Vitest, React Testing Library, Playwright, GitHub Actions | Tests on every push |
 
-## System architecture
+**Screens** (report Figure 5.1)
 
-```mermaid
-flowchart LR
-  subgraph Browser["Browser (React + TypeScript)"]
-    Cam["Webcam (optional)"] --> AT["Attention tracker<br/>MediaPipe, in the browser"]
-    AT -- "4 numbers per question, or null" --> MP["Mission screen"]
-    MP --> FX["Effects director<br/>Web Audio + CSS/SVG"]
-    MP --> API["lib/api.ts<br/>the only HTTP client"]
-    DASH["Student, parent and<br/>teacher dashboards"] --> API
-  end
+| | |
+|---|---|
+| ![A story question](docs/screenshots/mission-question.jpg) | ![A three-answer combo](docs/screenshots/mission-combo.jpg) |
+| **A mission:** the question tier comes from BKT | **A combo** after three correct answers |
+| ![Student dashboard](docs/screenshots/student-dashboard.jpg) | ![Parent report: mastery by topic](docs/screenshots/parent-report-2.jpg) |
+| **Student dashboard** | **Parent report:** BKT mastery per topic as a band and a capped percentage |
 
-  subgraph Server["FastAPI backend (Python)"]
-    AUTH["deps.py<br/>who is calling, what they may see"]
-    SES["routers/sessions.py<br/>missions and answers"]
-    QB["question_bank.py<br/>generator, or backup if it fails"]
-    Q["questions.py + story_questions.py<br/>random numbers, computed answers"]
-    M["mastery.py<br/>Bayesian Knowledge Tracing"]
-    G["game.py<br/>points, wins, levels"]
-    H["hints.py<br/>built-in hint, optional AI wording"]
-    REP["reports + report_builder.py<br/>figures from stored answers only"]
-  end
+## Repository structure
 
-  DB[("SQLite")]
-  Groq["Groq API<br/>(optional)"]
-
-  API -- "JWT bearer token" --> AUTH
-  AUTH --> SES
-  AUTH --> REP
-  SES --> QB --> Q
-  SES -- "right or wrong only" --> M
-  M -- "easy / medium / hard" --> QB
-  SES --> G
-  SES --> H -.-> Groq
-  SES --> DB
-  REP --> DB
+```
+ML_Project/
+├── README.md                 this file, organised like the report
+├── ML_COMPONENTS.md          every ML model: inputs, outputs, parameters, evaluation
+├── report/
+│   └── MathVerse_ML_Project_Report.pdf   the submitted ML project report
+├── results/
+│   └── bkt_simulation_results.txt        output of tools/evaluate_mastery.py
+├── backend/                  Python / FastAPI
+│   ├── services/
+│   │   ├── mastery.py        ★ BKT model and tier policy
+│   │   ├── mastery_display.py  mastery band and capped % for reports
+│   │   ├── attention.py      camera summary → score and label (never used by BKT)
+│   │   ├── hints.py          verified hint + optional LLM wording
+│   │   └── questions.py, story_questions.py, question_bank.py   question generators
+│   ├── tools/
+│   │   ├── evaluate_mastery.py    ★ simulated-student evaluation (report Ch. 6)
+│   │   ├── evaluate_real_data.py  same evaluation on real stored answers
+│   │   └── evaluate_metrics.py    summary metrics from the database
+│   ├── tests/                pytest, incl. test_mastery.py and test_evaluate_*.py
+│   └── routers/, models.py, schemas.py, main.py   the API
+├── frontend/                 React / TypeScript
+│   └── src/lib/attention/    ★ MediaPipe FaceLandmarker in the browser
+└── docs/
+    ├── ARCHITECTURE.md       system design
+    ├── PRIVACY.md            what data is collected and what is not
+    ├── WEBCAM_TEST_PLAN.md   real-device check of the vision model
+    └── screenshots/
 ```
 
-**One question, start to finish**
+## Run it
 
-1. The mission screen asks the server for a question.
-2. The server reads the student's mastery for the villain's topic, picks a tier,
-   and builds a question from random numbers. The answer is computed and stored
-   with the question; only the text and four options go to the browser.
-3. The student picks an option. The browser sends the choice, the time taken,
-   and the camera summary (or `null` if the camera is off).
-4. The server judges the answer, updates mastery from right or wrong alone,
-   awards points, updates the mission, and replies with the result and the next
-   question.
-5. The browser turns the result into game events (strike, counter-attack, combo,
-   signature move, victory) and plays the matching sounds and effects.
+You need Python 3.10+ and Node.js 18+.
 
-**Data model**
-
-| Table | Holds |
-|---|---|
-| `users` | Accounts: name, email, bcrypt password hash, role, points, level, link code, demo flag |
-| `guardian_links` | Which parent or teacher is linked to which student |
-| `play_sessions` | Missions: villain, status, correct and wrong counts, streak, points |
-| `attempts` | Every question served, its stored answer, the student's choice, time, hint use, points, mastery before and after, and the optional camera numbers |
-| `topic_mastery` | One mastery estimate per student per topic |
-
-The full design, including the mastery formulas with a worked example, is in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). What is collected and why is in
-[docs/PRIVACY.md](docs/PRIVACY.md).
-
-## What the "AI" parts really are
-
-| Part | What it is | What it is not |
-|---|---|---|
-| Mastery | Bayesian Knowledge Tracing: one probability per student per topic, updated from right and wrong answers only | Not a neural network; the parameters are standard defaults, not fitted to data |
-| Questions | Generated from random numbers with computed answers, checked by tests | Not written by a language model |
-| Hints | A verified built-in hint, optionally reworded by a language model (Groq) | The model never writes the maths, and the game works without it |
-| Attention estimate | MediaPipe face landmarks in the browser: face present, head facing the screen, blink rate | Not eye tracking, not a medical or ADHD assessment, and never used for scoring |
-
-## Run it locally
-
-You need Python 3.10 or newer and Node.js 18 or newer.
-
-### 1. Backend
+**Backend**
 
 ```bash
 cd backend
 python -m venv venv
-```
-
-Activate the environment: `venv\Scripts\activate` on Windows, or
-`source venv/bin/activate` on macOS and Linux. Then:
-
-```bash
+venv\Scripts\activate            # macOS / Linux: source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Create `backend/.env` by copying `backend/.env.example`, and set
-`JWT_SECRET_KEY` to a long random string. This prints one:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-Start the server:
+Copy `backend/.env.example` to `backend/.env` and set `JWT_SECRET_KEY` to a
+long random string, for example from
+`python -c "import secrets; print(secrets.token_urlsafe(48))"`. Then:
 
 ```bash
 uvicorn main:app --port 8001 --reload
 ```
 
-The API is at `http://localhost:8001` and its interactive docs at
-`http://localhost:8001/docs`. The database file `backend/mathverse.db` is
-created on first start.
-
-### 2. Frontend
-
-In a second terminal:
+**Frontend** (second terminal)
 
 ```bash
 cd frontend
@@ -322,175 +253,57 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`.
+Open `http://localhost:5173`, sign up as a student and play a mission. The
+difficulty (easy, medium, hard) follows your answers through BKT.
 
-### 3. Optional settings (`backend/.env`)
+**Optional settings in `backend/.env`:** `GROQ_API_KEY` turns on LLM hint
+wording, `DEMO_MODE=true` (after `python seed.py --demo`) shows demo accounts,
+and `GOOGLE_CLIENT_ID` turns on Google sign-in.
 
-| Setting | Effect |
-|---|---|
-| `DEMO_MODE=true` | Shows one-click demo buttons on the sign-in dialog. Run `python seed.py --demo` once first to create the three demo accounts with sample data. Off by default. |
-| `GROQ_API_KEY=...` | Lets a language model reword hints in character. Without it the built-in hints are used. |
-| `GOOGLE_CLIENT_ID=...` | Turns on "Sign in with Google". See below. Without it the button is hidden and email and password work as before. |
-| `CORS_ORIGINS=...` | Comma-separated frontend addresses allowed to call the API. |
-
-### Optional: "Sign in with Google"
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/), create a
-   project (any name), and open **APIs & Services → OAuth consent screen**.
-   Choose **External**, fill in the app name and your email, and save. While
-   the app is in "Testing", add the Google accounts that may sign in under
-   **Test users**.
-2. Open **APIs & Services → Credentials → Create credentials → OAuth client
-   ID**. Application type: **Web application**. Under **Authorised JavaScript
-   origins** add `http://localhost:5173`. No redirect URI is needed.
-3. Copy the **Client ID** (it ends in `.apps.googleusercontent.com`; it is not
-   a secret) into `backend/.env` as `GOOGLE_CLIENT_ID=...`, and restart the
-   backend. The frontend picks it up from the backend; nothing else to set.
-
-How it works: Google's own button signs the person in and gives the browser a
-signed ID token. The backend checks that token with Google's `google-auth`
-library (signature, this app's client ID, expiry, verified email) before
-trusting it. A new person gets an account with the role chosen on the sign-up
-tab; someone who already registered with the same email is linked to Google
-and keeps their password. Demo accounts can never be reached through Google.
-MathVerse never sees a Google password.
-
-### Try it
-
-1. Sign up as a student and start the first mission.
-2. Answer a few questions. The level (easy, medium, hard) follows your answers.
-3. Open your dashboard and copy your link code.
-4. In another browser profile, sign up as a parent and enter that code to see
-   the report.
-
-Extra pages for development: `?soundboard=1` plays every sound and effect, and
-`?attentionDebug=1` shows the live camera numbers as text during a mission.
-
-## Tests
+**Tests**
 
 ```bash
-cd backend
-pytest
+cd backend && pytest
+cd frontend && npm run test && npm run typecheck && npm run lint
 ```
 
-```bash
-cd frontend
-npm run test
-npm run typecheck
-npm run lint
-npm run build
-```
+## Limitations and future work
 
-With both servers running, this drives the real app in headless Chrome with a
-pretend webcam:
+**Limitations**
 
-```bash
-cd frontend
-npm run check:camera
-```
+- BKT parameters are textbook defaults, not fitted to real data, and topics are
+  treated independently.
+- The evaluation uses simulated students; only 9 real answers existed.
+- Response time and hint use are not used by the model.
+- Two correct answers move the estimate from 0.30 to about 0.90, so the model
+  can be over-confident early.
+- The camera estimate was checked on one device. It follows head direction, not
+  eye gaze.
 
-**What the tests cover**
+**Future work**
 
-- Google sign-in: forged or unverified tokens refused, new accounts get the
-  chosen role, existing accounts are linked not duplicated, demo accounts and
-  other people's addresses cannot be taken over, and older databases upgrade in place.
-- Sign-in, roles, and that nobody can read another account's data by changing an
-  id; demo login limits.
-- Every question type and every story at every tier, re-solved independently
-  from the question text (hundreds of random questions each); every backup
-  question; a full mission won on backup questions alone.
-- The game rules and the mastery model, including that the camera never changes
-  mastery, difficulty or points.
-- Reports checked against hand-computed values, and that missing camera data
-  stays empty instead of becoming zero.
-- The camera consent flow: declining, denial, switching off mid-mission, and that
-  no image is ever uploaded.
-- Sound and effect limits: at most four sounds at once, nothing covering the
-  question, reduced motion, settings that persist.
-
-CI runs the backend and frontend suites, typecheck, lint and build on every push.
-
-## Project layout
-
-```
-backend/
-  main.py              app and route wiring
-  config.py            settings from environment / .env
-  models.py            database tables
-  schemas.py           request and response shapes
-  security.py          password hashing and sign-in tokens
-  deps.py              who is calling and what they may see
-  seed.py              demo accounts (--demo) and database reset (--reset)
-  routers/             auth, sessions (gameplay), guardians, reports
-  services/            questions, story questions, backup bank, mastery,
-                       hints, attention, Google sign-in, game rules, report builder
-  tools/               evaluate_mastery.py (simulation), evaluate_real_data.py,
-                       verify_attempts.py
-  tests/
-frontend/src/
-  lib/api.ts           the one client for the backend
-  lib/attention/       in-browser camera tracking and its summary
-  lib/effects/         sound engine, sound recipes, visual cues, character profiles
-  context/             sign-in state and game progress
-  components/          screens; dashboard/ holds the report and charts
-docs/
-  ARCHITECTURE.md      how it works and how to explain it
-  PRIVACY.md           what is collected and what is not
-  WEBCAM_TEST_PLAN.md  real-device camera checklist and results
-  AUDIT_AND_PLAN.md    the audit this version was built from
-  screenshots/         the images in this README
-project-report-final/  final report: LaTeX source, figures and PDF
-journals/              each member's original plan and final work record
-project-proposal/, project-report-prototype-stage/, srs/   earlier coursework
-```
+1. Fit BKT per topic to real data with expectation–maximisation, and compare
+   with Performance Factors Analysis and Deep Knowledge Tracing.
+2. Individualised BKT: per-student priors and learning rates, and contextual
+   guess and slip.
+3. Add response time, hint use and links between related topics.
+4. Test the vision model across browsers, cameras and lighting, and try
+   eye-gaze features.
+5. Before real use with children: verified guardian consent, and original
+   characters in place of Marvel's.
 
 ## Team
 
-| Member | Area |
-|---|---|
-| Parth Arora | Technical lead: backend, database, security, server gameplay, camera privacy pipeline, testing and CI |
-| Harshit Negi | Frontend: screens, dashboards and charts, consent flow, visual character effects, UI tests |
-| Raghu Raja | Gwen tutor: curriculum, hints, AI wording with fallback, story-question content; proposal, SRS, journals and the end-semester report |
-| Ramneek Kaur | Mastery model, adaptive difficulty and its evaluation |
+**Group 3C14**, BE Third Year, CSE, TIET
 
-Details are in `journals/`. The original plan used Node.js, PostgreSQL, RAG and
-an LSTM; what was built instead, and why, is in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#planned-versus-implemented).
-
-## Documents
-
-Everything written for the course and about the system, in the order it was produced.
-
-| Document | Where | What it is |
+| Member | Roll no. | Area of responsibility |
 |---|---|---|
-| Project proposal | [project-proposal/Proposal.pdf](project-proposal/Proposal.pdf) | The original idea, objectives and plan (Aug 2026) |
-| Early project report | [project-proposal/MathVerse_AI_Project_Report.pdf](project-proposal/MathVerse_AI_Project_Report.pdf) | First design: use case, sequence, activity and class diagrams (Sep 2026) |
-| Prototype-stage report | [project-report-prototype-stage/](project-report-prototype-stage/) | LaTeX source of the frontend prototype report (Sep 2026) |
-| Software Requirements Specification | [srs/srs_mathverse_preview.pdf](srs/srs_mathverse_preview.pdf) | Functional and non-functional requirements, planned architecture and schema (Oct 2026) |
-| Team journals | [journals/](journals/) | Each member's original plan and final work record |
-| Audit and rebuild plan | [docs/AUDIT_AND_PLAN.md](docs/AUDIT_AND_PLAN.md) | What was wrong with the prototype and the phased plan that fixed it (Nov 2026) |
-| Architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the system works, planned versus implemented, and where each requirement is tested |
-| Privacy | [docs/PRIVACY.md](docs/PRIVACY.md) | What data is collected and what is not |
-| Webcam test plan | [docs/WEBCAM_TEST_PLAN.md](docs/WEBCAM_TEST_PLAN.md) | Real-device camera checklist and results |
-| **Final report** | [project-report-final/MathVerse_Project_Report.pdf](project-report-final/MathVerse_Project_Report.pdf) | End-semester report, with its LaTeX source in the same folder (Nov 2026) |
+| Harshit Negi | 1024030100 | Frontend (React, Vite): screens, mission player, rewards UI, student/parent/teacher dashboards, responsive layout, UI testing |
+| Parth Arora | 1024030122 | Backend and database: FastAPI service, data model, authentication and role-based access, gameplay and report endpoints, integration and hardening |
+| Raghu Raja | 1024030097 | Mastery and adaptive difficulty: mastery update rule, difficulty thresholds, simulated-student data and model evaluation. Gwen tutor: curriculum content, hint generation, AI wording with fallback |
 
-The proposal and SRS describe the system as first planned; the final report and
-`docs/ARCHITECTURE.md` explain every change made since.
+---
 
-## Known limits
-
-- The attention estimate has been checked on one real device only (one laptop
-  webcam, Chrome, one person, 16 November 2026) and in a real browser with a
-  pretend webcam. Other cameras, browsers, lighting and devices are untested.
-  Results and what is left are in [docs/WEBCAM_TEST_PLAN.md](docs/WEBCAM_TEST_PLAN.md).
-- The "facing the screen" figure reflects head direction, not eye gaze. On the
-  tested laptop it caught turning away and leaving, but not looking down at the
-  keyboard or lap.
-- Mastery parameters are textbook defaults; with them, mastery moves quickly.
-- The camera choice is made by whoever is using the device. This suits a course
-  demo; real use with children needs verified parent consent, as described in
-  [docs/PRIVACY.md](docs/PRIVACY.md).
-- Fonts are loaded from Google Fonts.
-- Spider-Man and related characters belong to Marvel. They are used here in a
-  non-commercial course project; the project is not affiliated with or endorsed
-  by Marvel and should not be deployed publicly as it stands.
+Spider-Man and related characters belong to Marvel. They are used here in a
+non-commercial course project, which is not affiliated with or endorsed by
+Marvel and should not be deployed publicly as it stands.

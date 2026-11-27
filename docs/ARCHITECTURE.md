@@ -1,7 +1,8 @@
 # MathVerse architecture
 
-How the system fits together, and how to explain each part. For the history of
-why it looks like this, see [AUDIT_AND_PLAN.md](AUDIT_AND_PLAN.md).
+How the system fits together, and how to explain each part. The machine-learning
+models are described in [ML_COMPONENTS.md](../ML_COMPONENTS.md) and in the
+[ML project report](../report/MathVerse_ML_Project_Report.pdf).
 
 ## The four rules
 
@@ -268,10 +269,10 @@ keeps working.
 
 ## Planned versus implemented
 
-The proposal and the SRS described a different stack. Each change was made
+The first prototype was planned with a different stack. Each change was made
 during the rebuild for the reason given.
 
-| Area | Planned (proposal, SRS) | Implemented | Reason |
+| Area | Originally planned | Implemented | Reason |
 |---|---|---|---|
 | Backend | Node.js + Express | Python + FastAPI | Automatic request validation and API docs; same REST design |
 | Database | PostgreSQL via Prisma | SQLite via SQLAlchemy | No database server to install; `DATABASE_URL` can point at PostgreSQL later |
