@@ -2,7 +2,7 @@
 
 How the system fits together, and how to explain each part. The machine-learning
 models are described in [ML_COMPONENTS.md](../ML_COMPONENTS.md) and in the
-[ML project report](../report/MathVerse_ML_Project_Report.pdf).
+[ML project report](../ML_Project_Report/MathVerse_ML_Project_Report.pdf).
 
 ## The four rules
 

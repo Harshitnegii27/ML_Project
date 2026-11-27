@@ -4,7 +4,7 @@
 Thapar Institute of Engineering and Technology, Patiala (November 2026).
 Supervisor: Dr Mahak Gambhir.
 
-📄 **Report:** [report/MathVerse_ML_Project_Report.pdf](report/MathVerse_ML_Project_Report.pdf)
+📄 **Report:** [ML_Project_Report/MathVerse_ML_Project_Report.pdf](ML_Project_Report/MathVerse_ML_Project_Report.pdf)
 🧠 **Every ML model in detail:** [ML_COMPONENTS.md](ML_COMPONENTS.md)
 📊 **Reproduced results:** [results/bkt_simulation_results.txt](results/bkt_simulation_results.txt)
 
@@ -198,7 +198,7 @@ python tools/evaluate_mastery.py
 ML_Project/
 ├── README.md                 this file, organised like the report
 ├── ML_COMPONENTS.md          every ML model: inputs, outputs, parameters, evaluation
-├── report/
+├── ML_Project_Report/
 │   └── MathVerse_ML_Project_Report.pdf   the submitted ML project report
 ├── results/
 │   └── bkt_simulation_results.txt        output of tools/evaluate_mastery.py

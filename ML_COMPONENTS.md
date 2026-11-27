@@ -3,7 +3,7 @@
 This file describes every machine-learning model used in MathVerse: what it
 does, what goes in and out of it, its parameters, how it was evaluated, and
 where its code lives. The full write-up is the
-[ML project report](report/MathVerse_ML_Project_Report.pdf). The chapter and
+[ML project report](ML_Project_Report/MathVerse_ML_Project_Report.pdf). The chapter and
 table numbers below refer to that report.
 
 ## Contents
@@ -547,4 +547,4 @@ the numbers are identical on every run.
 | `frontend/src/lib/attention/summary.ts` | Calibration, angle limits, per-question summary |
 | `frontend/src/lib/attention/tracker.ts` | 10-per-second sampling loop |
 | `results/bkt_simulation_results.txt` | Saved output of the simulation |
-| `report/MathVerse_ML_Project_Report.pdf` | The submitted ML project report |
+| `ML_Project_Report/MathVerse_ML_Project_Report.pdf` | The submitted ML project report |

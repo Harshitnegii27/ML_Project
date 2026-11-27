@@ -2,7 +2,7 @@
 
 Gamified maths practice for school students, with adaptive difficulty, optional
 in-browser attention estimates, and parent/teacher dashboards. A machine-learning
-course project (TIET); the ML report is in `report/`. It handles children's data, so the rules below matter.
+course project (TIET); the ML report is in `ML_Project_Report/`. It handles children's data, so the rules below matter.
 
 Read first: `docs/ARCHITECTURE.md` (how it works), `docs/PRIVACY.md` (what is
 collected), `ML_COMPONENTS.md` (every ML model, its inputs, outputs and evaluation).
@@ -181,7 +181,7 @@ Known and open:
     performance check; it did not repeat.
 11. CI runs on every push to `origin` and passes (469 backend, 231 frontend
     tests as of 2026-11-24).
-12. The submitted ML project report is `report/MathVerse_ML_Project_Report.pdf`;
+12. The submitted ML project report is `ML_Project_Report/MathVerse_ML_Project_Report.pdf`;
     its Table 6.1 is reproduced in `results/bkt_simulation_results.txt`. The work
     split was set by the user.
 
